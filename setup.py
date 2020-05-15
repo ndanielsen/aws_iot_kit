@@ -41,7 +41,7 @@ setup(
         "Programming Language :: Python :: 3.8",
     ],
     description="A commandline kit to jump start your work on AWS IoT projects",
-    entry_points={"console_scripts": ["aws_iot_kit=aws_iot_kit.cli:main",],},
+    entry_points={"console_scripts": ["iotkit=aws_iot_kit.cli:main",],},
     install_requires=requirements,
     license="Apache Software License 2.0",
     long_description=readme + "\n\n" + history,

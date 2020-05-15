@@ -6,13 +6,13 @@ import time
 import pathlib
 from pathlib import Path
 
-from config import load_config, update_config
+from aws_iot_kit.config import load_config, update_config
 from boto3.session import Session
 from botocore.exceptions import ClientError
 
 from dateutil.parser import parse
 
-from utils import _get_iot_session
+from aws_iot_kit.utils import _get_iot_session
 
 
 def _mkdir_thing(thing, certs_folder):

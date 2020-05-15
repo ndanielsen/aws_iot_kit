@@ -7,7 +7,7 @@ import yaml
 from boto3.session import Session
 import boto3
 
-from aws_iot_kit import create_things, delete_things
+from aws_iot_kit.aws_iot_kit import create_things, delete_things
 
 
 DEFAULT_CERTS_FOLDER = ".thing-certs/"
