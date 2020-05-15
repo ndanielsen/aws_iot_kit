@@ -103,3 +103,7 @@ ENV/
 
 # IDE settings
 .vscode/
+
+
+.thing-certs/
+aws-iot.yaml
