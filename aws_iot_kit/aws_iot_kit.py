@@ -1,6 +1,7 @@
 """Main module."""
 
 import uuid
+import json
 import time
 import pathlib
 from pathlib import Path
@@ -11,12 +12,7 @@ from botocore.exceptions import ClientError
 
 from dateutil.parser import parse
 
-
-def _get_iot_session(region, profile_name):
-    if profile_name is None:
-        return Session(region_name=region).client("iot")
-
-    return Session(region_name=region, profile_name=profile_name).client("iot")
+from utils import _get_iot_session
 
 
 def _mkdir_thing(thing, certs_folder):
@@ -84,15 +80,18 @@ def _write_certs(thing_id, keys_cert):
         log.error("OSError while writing an ELF file. {0}".format(ose))
 
 
-def extract_meta(data):
+def extract_meta(data, policy_data):
+
     return {
         "certificateArn": data["certificateArn"],
         "certificateId": data["certificateId"],
         "createDateTime": parse(data["ResponseMetadata"]["HTTPHeaders"]["date"]),
+        "policyName": policy_data["policyName"],
+        "policyArn": policy_data["policyArn"],
     }
 
 
-def _create_and_attach_policy(region, topic, thing_name, thing_cert_arn, iot_session):
+def _create_and_attach_policy(thing_id, thing_cert_arn, iot_session, region_name):
     # Create and attach to the principal/certificate the minimal action
     # privileges Thing policy that allows publish and subscribe
     tp = {
@@ -107,12 +106,12 @@ def _create_and_attach_policy(region, topic, thing_name, thing_cert_arn, iot_ses
                     "iot:Receive",
                     "iot:Subscribe",
                 ],
-                "Resource": ["arn:aws:iot:{0}:*:*".format(region)],
+                "Resource": ["arn:aws:iot:{0}:*:*".format(region_name)],
             }
         ],
     }
 
-    policy_name = "policy-{0}".format(thing_name)
+    policy_name = "policy-{0}".format(thing_id)
     policy = json.dumps(tp)
     p = iot_session.create_policy(policyName=policy_name, policyDocument=policy)
 
@@ -120,13 +119,7 @@ def _create_and_attach_policy(region, topic, thing_name, thing_cert_arn, iot_ses
         policyName=policy_name, principal=thing_cert_arn
     )
 
-    return p["policyName"], p["policyArn"]
-
-
-class Thing:
-
-  def __init__(self, region, thing_id=None, iot_session=None)
-    pass
+    return dict(policyName=p["policyName"], policyArn=p["policyArn"])
 
 
 def create_things(count=1):
@@ -134,34 +127,38 @@ def create_things(count=1):
     Create and activate a specified number of Things in the AWS IoT Service.
     """
     config = load_config()
-    region = config["aws"]["region"]
+    region_name = config["aws"]["region"]
     profile_name = config["aws"]["profile_name"]
-    iot = _get_iot_session(region, profile_name)
+    iot_session = _get_iot_session(region_name, profile_name)
 
     for thing in range(count):
         thing_id = str(uuid.uuid4())
 
         _mkdir_thing(thing_id, config["certs_folder"])
-        keys_cert = iot.create_keys_and_certificate(setAsActive=True)
-        iot.create_thing(thingName=thing_id)
-        iot.attach_thing_principal(
+        keys_cert = iot_session.create_keys_and_certificate(setAsActive=True)
+        iot_session.create_thing(thingName=thing_id)
+        iot_session.attach_thing_principal(
             thingName=thing_id, principal=keys_cert["certificateArn"]
         )
+        policy_data = _create_and_attach_policy(
+            thing_id, keys_cert["certificateArn"], iot_session, region_name
+        )
+
         _write_certs(thing_id, keys_cert)
-        meta = extract_meta(keys_cert)
+        meta = extract_meta(keys_cert, policy_data)
         _update_config(thing_id, meta)
     print(f"Created {count}")
 
 
 def delete_thing_cloud(thing_id, cert_details, iot_session):
-    policy_name_key = "device_policy"
+    policy_name_key = "policyName"
     if policy_name_key in cert_details:
         try:
-            iot.detach_principal_policy(
+            iot_session.detach_principal_policy(
                 policyName=cert_details[policy_name_key],
                 principal=cert_details["certificateArn"],
             )
-            iot.delete_policy(policyName=cert_details[policy_name_key])
+            iot_session.delete_policy(policyName=cert_details[policy_name_key])
         except ClientError as ce:
             print(ce)
 
