@@ -1,10 +1,13 @@
 """Main module."""
 
 import uuid
+import time
+import pathlib
 from pathlib import Path
 
 from config import load_config, update_config
 from boto3.session import Session
+from botocore.exceptions import ClientError
 
 from dateutil.parser import parse
 
@@ -36,25 +39,44 @@ def _update_config(thing_id, meta={}):
     update_config(config)
 
 
+def _determine_file_paths(thing_id, certs_folder):
+    thing_path_base = f"{certs_folder}/{thing_id}"
+    return dict(
+        thing_path_base=thing_path_base,
+        certname=f"{thing_path_base}/{thing_id}.pem",
+        public_key_file=f"{thing_path_base}/{thing_id}.pub",
+        private_key_file=f"{thing_path_base}/{thing_id}.prv",
+    )
+
+
+def delete_thing_files(thing_id, config):
+    paths = _determine_file_paths(thing_id, config["certs_folder"])
+    for key, file_path in paths.items():
+        if key == "thing_path_base":
+            continue
+        file_path = pathlib.Path(file_path)
+        file_path.unlink()  # remove file
+
+    dir_path = pathlib.Path(paths["thing_path_base"])
+    dir_path.rmdir()  # remove directory
+
+
 def _write_certs(thing_id, keys_cert):
     config = load_config()
 
     certs_folder = config["certs_folder"]
-    thing_path_base = f"{certs_folder}/{thing_id}/{thing_id}"
-
+    paths = _determine_file_paths(thing_id, certs_folder)
     try:
-        certname = f"{thing_path_base}.pem"
-        public_key_file = f"{thing_path_base}.pub"
-        private_key_file = f"{thing_path_base}.prv"
-        with open(certname, "w") as pem_file:
+
+        with open(paths["certname"], "w") as pem_file:
             pem = keys_cert["certificatePem"]
             pem_file.write(pem)
 
-        with open(public_key_file, "w") as pub_file:
+        with open(paths["public_key_file"], "w") as pub_file:
             pub = keys_cert["keyPair"]["PublicKey"]
             pub_file.write(pub)
 
-        with open(private_key_file, "w") as prv_file:
+        with open(paths["private_key_file"], "w") as prv_file:
             prv = keys_cert["keyPair"]["PrivateKey"]
             prv_file.write(prv)
 
@@ -68,6 +90,43 @@ def extract_meta(data):
         "certificateId": data["certificateId"],
         "createDateTime": parse(data["ResponseMetadata"]["HTTPHeaders"]["date"]),
     }
+
+
+def _create_and_attach_policy(region, topic, thing_name, thing_cert_arn, iot_session):
+    # Create and attach to the principal/certificate the minimal action
+    # privileges Thing policy that allows publish and subscribe
+    tp = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": [
+                    # "iot:*"
+                    "iot:Connect",
+                    "iot:Publish",
+                    "iot:Receive",
+                    "iot:Subscribe",
+                ],
+                "Resource": ["arn:aws:iot:{0}:*:*".format(region)],
+            }
+        ],
+    }
+
+    policy_name = "policy-{0}".format(thing_name)
+    policy = json.dumps(tp)
+    p = iot_session.create_policy(policyName=policy_name, policyDocument=policy)
+
+    iot_session.attach_principal_policy(
+        policyName=policy_name, principal=thing_cert_arn
+    )
+
+    return p["policyName"], p["policyArn"]
+
+
+class Thing:
+
+  def __init__(self, region, thing_id=None, iot_session=None)
+    pass
 
 
 def create_things(count=1):
@@ -94,7 +153,59 @@ def create_things(count=1):
     print(f"Created {count}")
 
 
-if __name__ == "__main__":
+def delete_thing_cloud(thing_id, cert_details, iot_session):
+    policy_name_key = "device_policy"
+    if policy_name_key in cert_details:
+        try:
+            iot.detach_principal_policy(
+                policyName=cert_details[policy_name_key],
+                principal=cert_details["certificateArn"],
+            )
+            iot.delete_policy(policyName=cert_details[policy_name_key])
+        except ClientError as ce:
+            print(ce)
+
+    try:
+
+        iot_session.update_certificate(
+            certificateId=cert_details["certificateId"], newStatus="INACTIVE"
+        )
+        iot_session.detach_thing_principal(
+            thingName=thing_id, principal=cert_details["certificateArn"]
+        )
+        time.sleep(1)
+
+        iot_session.delete_certificate(certificateId=cert_details["certificateId"])
+
+    except ClientError as ce:
+        print(ce)
+
+    iot_session.delete_thing(thingName=thing_id)
+    print(f"Removed: {thing_id}")
+
+
+def delete_things(clean_type):
+    """
+    Clean up all Things previously created in the AWS IoT Service and files
+    stored locally.
+    """
     config = load_config()
 
-    print(create_things(1))
+    things = config.get("things")
+    if not things:
+        print("No things locally")
+        return
+
+    region = config["aws"]["region"]
+    profile_name = config["aws"]["profile_name"]
+    iot_session = _get_iot_session(region, profile_name)
+
+    for thing_id, cert_details in things.items():
+
+        if clean_type == "cloud":
+            delete_thing_cloud(thing_id, cert_details, iot_session)
+
+        delete_thing_files(thing_id, config)
+
+    config["things"] = {}
+    update_config(config)

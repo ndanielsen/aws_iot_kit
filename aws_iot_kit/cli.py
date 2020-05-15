@@ -7,9 +7,8 @@ import yaml
 from boto3.session import Session
 import boto3
 
-from aws_iot_kit import create_things
+from aws_iot_kit import create_things, delete_things
 
-# botocore.exceptions.ProfileNotFound
 
 DEFAULT_CERTS_FOLDER = ".thing-certs/"
 
@@ -46,7 +45,14 @@ def get_endpoint(client):
 @click.option("--init", is_flag=True, help="Initialize AWS IoT Project")
 @click.option("--create", "-c", is_flag=True, help="Create Things")
 @click.option("--number", "-n", default=1, help="Specify numer of Things to create")
-def main(init, create, number):
+@click.option("--clean", "delete", flag_value="local", help="Remove local thing files")
+@click.option(
+    "--wipe",
+    "delete",
+    flag_value="cloud",
+    help="Remove local thing files and Cloud instances",
+)
+def main(init, create, number, delete):
     """Console script for aws_iot_kit."""
     if init:
         click.echo("Init Project")
@@ -68,7 +74,11 @@ def main(init, create, number):
 
     if create:
         create_things(count=number)
-    return 0
+        return
+
+    if delete:
+        delete_things(delete)
+        return
 
 
 if __name__ == "__main__":
