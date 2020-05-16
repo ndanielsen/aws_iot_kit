@@ -1,5 +1,5 @@
 ===========
-Aws IoT Kit
+Py IoT Kit
 ===========
 
 
@@ -16,7 +16,7 @@ Aws IoT Kit
 
 
 
-A commandline kit to jump start your work on AWS IoT projects
+A commandline kit to jump start your work on Python IoT projects
 
 
 * Free software: Apache Software License 2.0
