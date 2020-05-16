@@ -15,6 +15,7 @@ requirements = [
     "pyyaml>=5.3.1",
     "boto3>=1.13.9",
     "python-dateutil>=1.14.0",
+    "AWSIoTPythonSDK>=1.4.8",
 ]
 
 setup_requirements = [

@@ -7,38 +7,9 @@ import yaml
 from boto3.session import Session
 import boto3
 
-from aws_iot_kit.aws_iot_kit import create_things, delete_things
+from .aws_iot_kit import delete_things
 
-
-DEFAULT_CERTS_FOLDER = ".thing-certs/"
-
-
-def create_certs_folder(folder_name):
-    Path(folder_name).mkdir(exist_ok=True)
-    return folder_name
-
-
-def create_config(aws_profile, region_name, folder_name, iot_endpoint):
-    aws = {
-        "profile_name": aws_profile,
-        "region": region_name,
-        "iot_endpoint": iot_endpoint["endpointAddress"],
-    }
-
-    config = {"certs_folder": folder_name, "aws": aws}
-
-    with open("aws-iot.yaml", "w") as f:
-        data = yaml.dump(config, f)
-
-
-def get_session(aws_profile):
-    session = Session(profile_name=aws_profile)
-    return session
-
-
-def get_endpoint(client):
-    client = client.client("iot")
-    return client.describe_endpoint(endpointType="iot:Data-ATS")
+from .models import Config, DEFAULT_CERTS_FOLDER
 
 
 @click.command()
@@ -57,26 +28,21 @@ def main(init, create, number, delete):
     if init:
         click.echo("Init Project")
         aws_profile = click.prompt("Please enter your AWS CLI Profile Name")
-
-        client = get_session(aws_profile)
-
-        aws_region = click.prompt("Please enter AWS region", default=client.region_name)
-
+        aws_region = click.prompt("Please enter AWS region", default="us-west-2")
         folder_name = click.prompt(
             "Please enter Thing Certs Folder Path", default=DEFAULT_CERTS_FOLDER
         )
-
-        iot_endpoint = get_endpoint(client)
-
-        folder_name = create_certs_folder(folder_name)
-        create_config(aws_profile, aws_region, folder_name, iot_endpoint)
+        config = Config.init(aws_profile, folder_name)
         return
+    config = Config.load()
+    # TODO - exit if not loaded
 
+    print(config)
     if create:
-        create_things(count=number)
+        config.create_things(count=number)
         return
 
-    if delete:
+    elif delete:
         delete_things(delete)
         return
 

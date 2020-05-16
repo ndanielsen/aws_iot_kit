@@ -4,19 +4,16 @@ import uuid
 import json
 import time
 import pathlib
+
 from pathlib import Path
 
-from aws_iot_kit.config import load_config, update_config
+
 from boto3.session import Session
 from botocore.exceptions import ClientError
 
-from dateutil.parser import parse
-
-from aws_iot_kit.utils import _get_iot_session
-
-
-def _mkdir_thing(thing, certs_folder):
-    Path(f"{certs_folder}/{thing}").mkdir(exist_ok=True)
+from .config import load_config, update_config
+from .utils import _get_iot_session
+from .paths import _mkdir_thing, _determine_file_paths
 
 
 def _update_config(thing_id, meta={}):
@@ -33,16 +30,6 @@ def _update_config(thing_id, meta={}):
         things[thing_id] = meta
 
     update_config(config)
-
-
-def _determine_file_paths(thing_id, certs_folder):
-    thing_path_base = f"{certs_folder}/{thing_id}"
-    return dict(
-        thing_path_base=thing_path_base,
-        certname=f"{thing_path_base}/{thing_id}.pem",
-        public_key_file=f"{thing_path_base}/{thing_id}.pub",
-        private_key_file=f"{thing_path_base}/{thing_id}.prv",
-    )
 
 
 def delete_thing_files(thing_id, config):
@@ -206,3 +193,44 @@ def delete_things(clean_type):
 
     config["things"] = {}
     update_config(config)
+
+
+from .connectors import MqttPoster
+
+
+def send_messages(cli):
+    """
+    Send messages through the AWS IoT service from the previously created
+    number of Things.
+    """
+    message = json.dump(dict(msg="hello"))
+
+    topic = "test"
+    duration = 60
+
+    config = load_config()
+
+    things = config["things"]
+
+    # setup Things and ElfPoster threads
+
+    for thing_id, certs in things:
+
+        ep = MqttPoster(thing_id, cfg)
+
+        things[i][thing_name][policy_name_key] = ep.policy_name
+        things[i][thing_name][policy_arn_key] = ep.policy_arn
+
+        ep_list.append(ep)
+        ep.start()
+        i += 1
+
+    _update_things_config(things)
+
+    # wait for all the ElfPoster threads to finish their post_duration
+    for ep in ep_list:
+        ep.join()
+
+    # Now disconnect the MQTT Client
+    for ep in ep_list:
+        ep.mqttc.disconnect()
